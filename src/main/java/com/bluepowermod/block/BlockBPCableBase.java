@@ -94,6 +94,14 @@ public class BlockBPCableBase extends BlockBase implements IBPPartBlock, SimpleW
         return world.getBlockState(pos.relative(state.getValue(FACING).getOpposite())).canOcclude();
     }
 
+    @Override
+    public void onMultipartReplaced(BlockState state, Level worldIn, BlockPos pos, BlockState newState, boolean isMoving) {
+        for (Direction direction : Direction.values()) {
+            BlockPos neighborPos = pos.relative(direction);
+            worldIn.updateNeighborsAt(neighborPos, this);
+        }
+    }
+
     protected Capability<?> getCapability(){
         return null;
     }
