@@ -1,6 +1,8 @@
 package com.bluepowermod.tile.tier1;
 
 import com.bluepowermod.BluePower;
+import com.bluepowermod.api.multipart.IBPMultipartTile;
+import com.bluepowermod.api.multipart.IBPPartTile;
 import com.bluepowermod.api.wire.redstone.*;
 import com.bluepowermod.block.BlockBPCableBase;
 import com.bluepowermod.block.BlockBPCableBase.ConnectionType;
@@ -38,8 +40,9 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
-public class TileWire extends TileBase implements IRedwire {
+public class TileWire extends TileBase implements IRedwire, IBPPartTile {
     private final IRedstoneDevice device;
+    IBPMultipartTile multipart = null;
     @Nullable
     private BlockState cachedBlockState;
     private LazyOptional<IRedstoneDevice> redstoneCap;
@@ -125,14 +128,11 @@ public class TileWire extends TileBase implements IRedwire {
     protected BlockEntity findBlockEntity(Direction side) {
         BlockState thisState = this.getLevel().getBlockState(this.getBlockPos());
         BlockEntity entity;
-        if (thisState.getBlock() instanceof BlockBPMultipart){
-            BlockEntity thisBE = this.getLevel().getBlockEntity(this.getBlockPos());
-            if (thisBE instanceof TileBPMultipart multipart){
-                BlockState partState = multipart.getStateByFacing(side.getOpposite());
-                if (partState != null){
-                    entity = multipart.getTileForState(partState);
-                    if (entity != null) return entity;
-                }
+        if (side != this.getFacingDirection().getOpposite() && this.multipart != null){
+            BlockState partState = multipart.getStateByFacing(side.getOpposite());
+            if (partState != null){
+                entity = multipart.getTileForState(partState);
+                if (entity != null) return entity;
             }
         }
         entity = level.getBlockEntity(this.getBlockPos().relative(side));
@@ -247,5 +247,15 @@ public class TileWire extends TileBase implements IRedwire {
     @Override
     public boolean canOutputPower(Direction side) {
         return canReceivePower(side);
+    }
+
+    @Override
+    public void setMultipartTile(IBPMultipartTile multipart) {
+        this.multipart = multipart;
+    }
+
+    @Override
+    public IBPMultipartTile getMultipart() {
+        return multipart;
     }
 }
