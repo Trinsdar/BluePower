@@ -2,6 +2,7 @@ package com.bluepowermod.api.wire.redstone;
 
 import com.bluepowermod.api.connect.ConnectionType;
 import com.bluepowermod.block.BlockBPMultipart;
+import com.bluepowermod.helper.MathHelper;
 import com.bluepowermod.helper.RedstoneHelper;
 import com.bluepowermod.redstone.RedstoneApi;
 import com.bluepowermod.redstone.RedstoneConnectionCache;
@@ -47,9 +48,14 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
 
     @Override
     public byte getRedstonePower(Direction side) {
-        if (side != null && !wire.canOutputPower(side)) return 0;
         if (input != null && input.first() == side) return 0;
         return power;
+    }
+
+    @Override
+    public byte getVanillaRedstonePower(Direction side) {
+        if (side != null && !wire.canOutputPower(side)) return 0;
+        return (byte) MathHelper.map(getRedstonePower(side) & 0xFF, 0, 255, 0, 15);
     }
 
     @Override

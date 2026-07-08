@@ -6,7 +6,6 @@ import com.bluepowermod.api.multipart.IBPPartTile;
 import com.bluepowermod.api.wire.redstone.*;
 import com.bluepowermod.block.BlockBPCableBase;
 import com.bluepowermod.block.BlockBPCableBase.ConnectionType;
-import com.bluepowermod.block.BlockBPMultipart;
 import com.bluepowermod.block.machine.BlockAlloyWire;
 import com.bluepowermod.client.render.IBPColoredBlock;
 import com.bluepowermod.init.BPBlockEntityType;
@@ -19,7 +18,6 @@ import com.mojang.datafixers.util.Pair;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.Tag;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.nbt.CompoundTag;
@@ -218,6 +216,10 @@ public class TileWire extends TileBase implements IRedwire, IBPPartTile {
     }
 
     public boolean isConnected(Direction direction){
+        return getConnectionType(direction) != ConnectionType.NONE;
+    }
+
+    public ConnectionType getConnectionType(Direction direction){
         Direction[] sides = BlockBPCableBase.directionsFromFacing(getBlockState().getValue(BlockBPCableBase.FACING));
         for (int i = 0; i < 4; i++){
             Direction side = sides[i];
@@ -228,10 +230,10 @@ public class TileWire extends TileBase implements IRedwire, IBPPartTile {
                 default -> BlockBPCableBase.CONNECTION_TYPE_BACK;
             };
             if (side == direction){
-                return getBlockState().getValue(property) != ConnectionType.NONE;
+                return getBlockState().getValue(property);
             }
         }
-        return false;
+        return ConnectionType.NONE;
     }
 
     @Override
@@ -246,6 +248,9 @@ public class TileWire extends TileBase implements IRedwire, IBPPartTile {
 
     @Override
     public boolean canOutputPower(Direction side) {
+        if (multipart != null){
+            return getConnectionType(side) == ConnectionType.STRAIGHT || getBlockState().getValue(BlockBPCableBase.FACING) == side.getOpposite();
+        }
         return canReceivePower(side);
     }
 
