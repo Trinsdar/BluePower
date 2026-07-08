@@ -40,7 +40,7 @@ public interface IRedstoneDevice extends IWorldLocation {
     /**
      * Notifies the device of a power change. (Usually called after propagation)
      */
-    public void onRedstoneUpdate();
+    public boolean onRedstoneUpdate();
 
     /**
      * Returns whether this is a full face (if face devices should be able to connect to it)

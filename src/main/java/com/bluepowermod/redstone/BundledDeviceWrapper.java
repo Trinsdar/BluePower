@@ -82,9 +82,8 @@ public class BundledDeviceWrapper implements IAdvancedRedstoneConductor {
     }
 
     @Override
-    public void onRedstoneUpdate() {
-
-        device.onBundledUpdate();
+    public boolean onRedstoneUpdate() {
+        return device.onBundledUpdate();
     }
 
     @Override

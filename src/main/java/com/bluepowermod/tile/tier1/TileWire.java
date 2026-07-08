@@ -1,16 +1,24 @@
 package com.bluepowermod.tile.tier1;
 
+import com.bluepowermod.BluePower;
 import com.bluepowermod.api.wire.redstone.*;
 import com.bluepowermod.block.BlockBPCableBase;
 import com.bluepowermod.block.BlockBPCableBase.ConnectionType;
+import com.bluepowermod.block.BlockBPMultipart;
 import com.bluepowermod.block.machine.BlockAlloyWire;
 import com.bluepowermod.client.render.IBPColoredBlock;
 import com.bluepowermod.init.BPBlockEntityType;
+import com.bluepowermod.redstone.RedstoneApi;
+import com.bluepowermod.tile.TileBPMultipart;
 import com.bluepowermod.tile.TileBase;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.mojang.datafixers.util.Pair;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -25,13 +33,17 @@ import org.jetbrains.annotations.NotNull;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 public class TileWire extends TileBase implements IRedwire {
     private final IRedstoneDevice device;
     @Nullable
     private BlockState cachedBlockState;
     private LazyOptional<IRedstoneDevice> redstoneCap;
+    protected final Cache<Direction, BlockEntity> blockEntityCache = CacheBuilder.newBuilder().expireAfterAccess(5, TimeUnit.MINUTES).build();
 
     public static final ModelProperty<Pair<Integer, Integer>> COLOR_INFO = new ModelProperty<>();
     public static final ModelProperty<Boolean> LIGHT_INFO = new ModelProperty<>();
@@ -46,12 +58,90 @@ public class TileWire extends TileBase implements IRedwire {
     }
 
     public void onBlockUpdate(){
-        this.device.onRedstoneUpdate();
+        // Don't to anything if propagation-related stuff is going on
+        if (!RedstoneApi.getInstance().shouldWiresHandleUpdates())
+            return;
+        if (this.onRedstoneUpdate()) doRedstoneUpdate(this);
+    }
+
+    protected boolean onRedstoneUpdate(){
+        boolean bool = this.device.onRedstoneUpdate();
+        if (bool){
+            this.markBlockForUpdate();
+        }
+        return bool;
+    }
+
+    public static void doRedstoneUpdate(TileWire device) {
+        HashSet<TileWire> tSetUpdating = new HashSet<>(List.of(device)), tSetNext = new HashSet<>();
+        while (!tSetUpdating.isEmpty()) {
+            for (TileWire tTileEntity : tSetUpdating) {
+                for (Direction tSide : Direction.values()) {
+                    if (tTileEntity.canReceivePower(tSide)) {
+                        BlockEntity tDelegator = tTileEntity.getCachedBlockEntity(tSide);
+                        if (tDelegator instanceof TileBPMultipart multipart){
+                            BlockState partState = multipart.getStateByFacing(tTileEntity.getFacingDirection());
+                            if (partState != null){
+                                BlockEntity partBE = multipart.getTileForState(partState);
+                                if (partBE instanceof TileWire wire && wire.isConnected(tSide.getOpposite()) && wire.onRedstoneUpdate()){
+                                    tSetNext.add(wire);
+                                }
+                            }
+                        } else if (tDelegator instanceof TileWire wire) {
+                            Direction opposite = wire.getBlockPos().equals(tTileEntity.getBlockPos()) ? tTileEntity.getFacingDirection().getOpposite() : tSide.getOpposite();
+                            if (wire.isConnected(opposite) && wire.onRedstoneUpdate()) {
+                                tSetNext.add(wire);
+                            }
+                        }
+                    }
+                }
+            }
+            tSetUpdating.clear();
+            tSetUpdating.addAll(tSetNext);
+            tSetNext.clear();
+        }
+    }
+
+    public BlockEntity getCachedBlockEntity(Direction side){
+        if (level == null) return null;
+        try {
+            BlockEntity entity;
+            if (!blockEntityCache.asMap().containsKey(side)){
+                entity = findBlockEntity(side);
+                if (entity == null) return null;
+            } else {
+                entity = null;
+            }
+            BlockEntity finalEntity = entity;
+            BlockEntity cached = blockEntityCache.get(side, () -> finalEntity);
+            if (cached.isRemoved()) blockEntityCache.invalidate(side);
+            return !cached.isRemoved() ? cached : getCachedBlockEntity(side);
+        } catch (ExecutionException e) {
+            BluePower.log.error(e);
+            return null;
+        }
+    }
+
+    protected BlockEntity findBlockEntity(Direction side) {
+        BlockState thisState = this.getLevel().getBlockState(this.getBlockPos());
+        BlockEntity entity;
+        if (thisState.getBlock() instanceof BlockBPMultipart){
+            BlockEntity thisBE = this.getLevel().getBlockEntity(this.getBlockPos());
+            if (thisBE instanceof TileBPMultipart multipart){
+                BlockState partState = multipart.getStateByFacing(side.getOpposite());
+                if (partState != null){
+                    entity = multipart.getTileForState(partState);
+                    if (entity != null) return entity;
+                }
+            }
+        }
+        entity = level.getBlockEntity(this.getBlockPos().relative(side));
+        return entity;
     }
 
 
     public @NotNull ModelData getModelData(){
-        Boolean lightData = device.getRedstonePower(null) > 0;
+        Boolean lightData = (device.getRedstonePower(null) & 0xFF) > 0;
         return ModelData.builder().with(LIGHT_INFO, lightData).build();
     }
 
@@ -61,7 +151,7 @@ public class TileWire extends TileBase implements IRedwire {
 
             //Add Color and Light Data
             Pair<Integer, Integer> colorData = Pair.of(((IBPColoredBlock)state.getBlock()).getColor(state, level, worldPosition, -1), ((IBPColoredBlock)state.getBlock()).getColor(state, level, worldPosition, 2));
-            Boolean lightData = device.getRedstonePower(null) > 0;
+            Boolean lightData = (device.getRedstonePower(null) & 0xFF) > 0;
 
             return ModelData.builder().with(COLOR_INFO, colorData).with(LIGHT_INFO, lightData).build();
 
@@ -95,8 +185,7 @@ public class TileWire extends TileBase implements IRedwire {
                 directions.remove(state.getValue(BlockAlloyWire.FACING));
 
                 //Make sure the cable is on the same side of the block
-                directions.removeIf(d -> level.getBlockState(worldPosition.relative(d)).getBlock() instanceof BlockAlloyWire
-                        && level.getBlockState(worldPosition.relative(d)).getValue(BlockAlloyWire.FACING) != state.getValue(BlockAlloyWire.FACING));
+                directions.removeIf(d -> !isConnected(d));
 
 
                 //Make sure the cable is the same color or none

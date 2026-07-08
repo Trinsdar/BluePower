@@ -137,8 +137,8 @@ public class DummyRedstoneDevice implements IRedstoneDevice, IWorldLocation {
     }
 
     @Override
-    public void onRedstoneUpdate() {
-
+    public boolean onRedstoneUpdate() {
+        return false;
     }
 
     @Override

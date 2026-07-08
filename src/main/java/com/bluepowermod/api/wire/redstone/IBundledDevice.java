@@ -38,7 +38,7 @@ public interface IBundledDevice extends IWorldLocation {
     /**
      * Notifies the device of a power change. (Usually called after propagation)
      */
-    public void onBundledUpdate();
+    public boolean onBundledUpdate();
 
     /**
      * Gets the color of this bundled device. Normally used to determine if other blocks should connect to it.

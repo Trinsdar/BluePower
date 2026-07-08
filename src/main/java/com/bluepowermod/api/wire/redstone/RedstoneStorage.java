@@ -1,14 +1,22 @@
 package com.bluepowermod.api.wire.redstone;
 
 import com.bluepowermod.api.connect.ConnectionType;
+import com.bluepowermod.block.BlockBPMultipart;
+import com.bluepowermod.helper.RedstoneHelper;
 import com.bluepowermod.redstone.RedstoneApi;
 import com.bluepowermod.redstone.RedstoneConnectionCache;
+import com.bluepowermod.tile.TileBPMultipart;
 import com.bluepowermod.tile.tier1.TileWire;
+import com.bluepowermod.util.MultipartUtils;
+import it.unimi.dsi.fastutil.Pair;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
@@ -19,7 +27,7 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
     byte power = 0;
     private final IRedwire wire;
     private final Direction face;
-    private final EnumMap<Direction, Byte> inputs = new EnumMap<>(Direction.class);
+    private Pair<Direction, Integer> input = null;
 
     public RedstoneStorage(IRedwire wire, Direction face) {
         this.wire = wire;
@@ -39,7 +47,8 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
 
     @Override
     public byte getRedstonePower(Direction side) {
-        if (inputs.containsKey(side)) return 0;
+        if (side != null && !wire.canOutputPower(side)) return 0;
+        if (input != null && input.first() == side) return 0;
         return power;
     }
 
@@ -49,14 +58,90 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
     }
 
     @Override
-    public void onRedstoneUpdate() {
-        if (this.getLevel() == null) return;
-        // Don't to anything if propagation-related stuff is going on
-        if (!RedstoneApi.getInstance().shouldWiresHandleUpdates())
-            return;
-        if (getLevel().isClientSide()) return;
+    public boolean onRedstoneUpdate() {
+        if (this.getLevel() == null) return false;
+        if (getLevel().isClientSide()) return false;
+        byte oldPower = power;
+        int tRedstone = 0;
+        Pair<Direction, Integer> oldInput = this.input;
+        if (oldInput != null){
+            byte currentInput = (byte) getRedstoneAtSide(oldInput.first(), getDeviceAtSide(oldInput.first()));
+            if (power != currentInput){
+                power = currentInput;
+                input = (power & 0xFF) == 0 ? null : Pair.of(input.first(), power & 0xFF);
+            }
+        }
+        List<Direction> sidesToUpdate = new ArrayList<>();
+        boolean updateMultipart = false;
+        for (Direction side : Direction.values()){
+            if (!wire.canReceivePower(side)) continue;
+            if (oldInput != null && oldInput.first() == side) continue;
+            IRedstoneDevice device = getDeviceAtSide(side);
+            if (device == null) sidesToUpdate.add(side);
+            if ((tRedstone = getRedstoneAtSide(side, device)) > (power & 0xFF)){
+                power = (byte) tRedstone;
+                input = Pair.of(side, power & 0xFF);
+            }
+        }
+        if (power != oldPower){
+            RedstoneApi.getInstance().setWiresHandleUpdates(false);
+            for (Direction tSide : sidesToUpdate) {
+                updateBlock(tSide);
+            }
+            RedstoneApi.getInstance().setWiresHandleUpdates(true);
+            return true;
+        }
 
-        //RedstoneApi.getInstance().getRedstonePropagator(this, face).propagate();
+        return false;
+    }
+
+    private void updateBlock(Direction side){
+        BlockState state = getLevel().getBlockState(getBlockPos());
+        getLevel().markAndNotifyBlock(getBlockPos(), getLevel().getChunkAt(getBlockPos()), state, state, 1, 512);
+        BlockPos neighbor = getBlockPos().relative(side);
+        BlockState neighborState = getLevel().getBlockState(neighbor);
+        getLevel().updateNeighborsAtExceptFromFacing(neighbor, neighborState.getBlock(), side.getOpposite());
+    }
+
+    public int getRedstoneAtSide(Direction side, IRedstoneDevice device) {
+        if (side == null) return 0;
+        if (!wire.canReceivePower(side)) return 0;
+        int[] in = new int[]{0};
+
+        if (device != null){
+            Direction d = device.getBlockPos().equals(this.getBlockPos()) ? face.getOpposite() : side.getOpposite();
+            in[0] = device.getRedstonePower(d) & 0xFF;
+            if (in[0] > 0) return in[0] - (hasLoss(side) ? 1 : 0);
+        }
+        BlockState state = getLevel().getBlockState(getBlockPos().relative(side));
+        // Do not accept Redstone coming from any Redstone Sink! (Such as Droppers or Dispensers)
+        if(RedstoneHelper.isVanillaRedstoneSink(state)) return 0;
+        int redstoneLevel = MultipartUtils.getRedstonePower(side, face, getLevel(), getBlockPos());
+        in[0] = redstoneLevel * 17;
+        return in[0];
+    }
+
+    public IRedstoneDevice getDeviceAtSide(Direction side){
+        IRedstoneDevice[] device = new IRedstoneDevice[1];
+        BlockState thisState = getLevel().getBlockState(getBlockPos());
+        if (thisState.getBlock() instanceof BlockBPMultipart){
+            BlockEntity thisBE = getLevel().getBlockEntity(getBlockPos());
+            if (thisBE instanceof TileBPMultipart multipart){
+                BlockState partState = multipart.getStateByFacing(side.getOpposite());
+                if (partState != null){
+                    BlockEntity partBE = multipart.getTileForState(partState);
+                    if (partBE != null){
+                        partBE.getCapability(CapabilityRedstoneDevice.UNINSULATED_CAPABILITY, face.getOpposite()).ifPresent(r -> device[0] = r);
+                    }
+                }
+            }
+        }
+        BlockEntity tDelegator = getLevel().getBlockEntity(getBlockPos().relative(side));
+        if (tDelegator != null){
+
+            tDelegator.getCapability(CapabilityRedstoneDevice.UNINSULATED_CAPABILITY, side.getOpposite()).ifPresent(r -> device[0] = r);
+        }
+        return device[0];
     }
 
     @Override
