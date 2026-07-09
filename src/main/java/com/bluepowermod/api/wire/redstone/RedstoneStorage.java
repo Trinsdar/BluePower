@@ -1,6 +1,7 @@
 package com.bluepowermod.api.wire.redstone;
 
 import com.bluepowermod.api.connect.ConnectionType;
+import com.bluepowermod.api.multipart.IBPPartTile;
 import com.bluepowermod.block.BlockBPMultipart;
 import com.bluepowermod.helper.MathHelper;
 import com.bluepowermod.helper.RedstoneHelper;
@@ -129,22 +130,17 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
 
     public IRedstoneDevice getDeviceAtSide(Direction side){
         IRedstoneDevice[] device = new IRedstoneDevice[1];
-        BlockState thisState = getLevel().getBlockState(getBlockPos());
-        if (thisState.getBlock() instanceof BlockBPMultipart){
-            BlockEntity thisBE = getLevel().getBlockEntity(getBlockPos());
-            if (thisBE instanceof TileBPMultipart multipart){
-                BlockState partState = multipart.getStateByFacing(side.getOpposite());
-                if (partState != null){
-                    BlockEntity partBE = multipart.getTileForState(partState);
-                    if (partBE != null){
-                        partBE.getCapability(CapabilityRedstoneDevice.UNINSULATED_CAPABILITY, face.getOpposite()).ifPresent(r -> device[0] = r);
-                    }
+        if (wire instanceof IBPPartTile partTile && partTile.getMultipart() != null){
+            BlockState partState = partTile.getMultipart().getStateByFacing(side.getOpposite());
+            if (partState != null){
+                BlockEntity partBE = partTile.getMultipart().getTileForState(partState);
+                if (partBE != null){
+                    partBE.getCapability(CapabilityRedstoneDevice.UNINSULATED_CAPABILITY, face.getOpposite()).ifPresent(r -> device[0] = r);
                 }
             }
         }
         BlockEntity tDelegator = getLevel().getBlockEntity(getBlockPos().relative(side));
         if (tDelegator != null){
-
             tDelegator.getCapability(CapabilityRedstoneDevice.UNINSULATED_CAPABILITY, side.getOpposite()).ifPresent(r -> device[0] = r);
         }
         return device[0];
