@@ -120,6 +120,7 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
             if (!wire.canReceivePower(side)) continue;
             if (oldInput != null && oldInput.first() == side) continue;
             IRedstoneDevice device = getDeviceAtSide(side);
+            if (device == null) sidesToUpdate.put(side, false);
             tRedstone = getRedstoneAtSide(side,device);
             if (tRedstone > (power & 0xFF) && tRedstone != (oldPower & 0xFF) - 1){
                 power = (byte) tRedstone;
