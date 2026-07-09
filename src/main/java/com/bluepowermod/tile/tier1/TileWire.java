@@ -6,6 +6,7 @@ import com.bluepowermod.api.multipart.IBPPartTile;
 import com.bluepowermod.api.wire.redstone.*;
 import com.bluepowermod.block.BlockBPCableBase;
 import com.bluepowermod.block.BlockBPCableBase.ConnectionType;
+import com.bluepowermod.block.gates.BlockGateBase;
 import com.bluepowermod.block.machine.BlockAlloyWire;
 import com.bluepowermod.client.render.IBPColoredBlock;
 import com.bluepowermod.init.BPBlockEntityType;
@@ -249,7 +250,18 @@ public class TileWire extends TileBase implements IRedwire, IBPPartTile {
     @Override
     public boolean canOutputPower(Direction side) {
         if (multipart != null){
-            return getConnectionType(side) == ConnectionType.STRAIGHT || getBlockState().getValue(BlockBPCableBase.FACING) == side.getOpposite();
+            if (isConnected(side)){
+                BlockState partState = multipart.getStateByFacing(side.getOpposite());
+                if (partState != null){
+                    BlockEntity partBE = multipart.getTileForState(partState);
+                    if (partBE instanceof TileWire){
+                        return false;
+                    } else return partState.getBlock() instanceof BlockGateBase;
+                } else {
+                    return true;
+                }
+            }
+            return getBlockState().getValue(BlockBPCableBase.FACING) == side.getOpposite();
         }
         return canReceivePower(side);
     }

@@ -119,6 +119,7 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
             Direction d = device.getBlockPos().equals(this.getBlockPos()) ? face.getOpposite() : side.getOpposite();
             in[0] = device.getRedstonePower(d) & 0xFF;
             if (in[0] > 0) return in[0] - (hasLoss(side) ? 1 : 0);
+            else if (device.getBlockPos().equals(this.getBlockPos())) return 0;
         }
         BlockState state = getLevel().getBlockState(getBlockPos().relative(side));
         // Do not accept Redstone coming from any Redstone Sink! (Such as Droppers or Dispensers)
