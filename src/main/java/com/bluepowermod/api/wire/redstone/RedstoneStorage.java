@@ -1,6 +1,7 @@
 package com.bluepowermod.api.wire.redstone;
 
 import com.bluepowermod.api.connect.ConnectionType;
+import com.bluepowermod.api.multipart.IBPMultipartTile;
 import com.bluepowermod.api.multipart.IBPPartTile;
 import com.bluepowermod.block.BlockBPMultipart;
 import com.bluepowermod.helper.MathHelper;
@@ -20,8 +21,10 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
@@ -55,6 +58,7 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
 
     @Override
     public byte getVanillaRedstonePower(Direction side) {
+        if (!RedstoneApi.getInstance().shouldWiresOutputPower(this.hasLoss(side))) return 0;
         if (side != null && !wire.canOutputPower(side)) return 0;
         return (byte) MathHelper.map(getRedstonePower(side) & 0xFF, 0, 255, 0, 15);
     }
@@ -68,6 +72,7 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
     public boolean onRedstoneUpdate() {
         if (this.getLevel() == null) return false;
         if (getLevel().isClientSide()) return false;
+        IBPMultipartTile multipart = wire instanceof IBPPartTile partTile ? partTile.getMultipart() : null;
         byte oldPower = power;
         int tRedstone = 0;
         Pair<Direction, Integer> oldInput = this.input;
@@ -78,22 +83,60 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
                 input = (power & 0xFF) == 0 ? null : Pair.of(input.first(), power & 0xFF);
             }
         }
-        List<Direction> sidesToUpdate = new ArrayList<>();
+        Map<Direction, Boolean> sidesToUpdate = new HashMap<>();
+        if (input != null && input != oldInput){ //original input has changed
+            for (Direction side : Direction.values()){
+                Pair<BlockState, BlockEntity> p = getBlockEntityAtSide(side);
+                boolean isinThisBlock = false;
+                if (multipart != null){
+                    BlockState partState = multipart.getStateByFacing(side.getOpposite());
+                    BlockEntity partTE = partState != null ? multipart.getTileForState(partState) : null;
+                    if (partState != null){
+                        p = Pair.of(partState, partTE);
+                        isinThisBlock = true;
+                    }
+                }
+                if (!(p.second() instanceof IRedwire)){
+                    sidesToUpdate.put(side, isinThisBlock);
+                }
+            }
+            RedstoneApi.getInstance().setWiresOutputPower(false, hasLoss(null));
+            RedstoneApi.getInstance().setWiresHandleUpdates(false);
+            for (var side : sidesToUpdate.entrySet()) {
+                if (side.getValue() && multipart != null){
+                    BlockState partState = multipart.getStateByFacing(side.getKey().getOpposite());
+                    if (partState != null){
+                        partState.neighborChanged(getLevel(), getBlockPos(), partState.getBlock(), getBlockPos(), false);
+                    }
+                } else {
+                    updateBlock(side.getKey());
+                }
+            }
+            RedstoneApi.getInstance().setWiresHandleUpdates(true);
+            RedstoneApi.getInstance().setWiresOutputPower(true, hasLoss(null));
+        }
         boolean updateMultipart = false;
         for (Direction side : Direction.values()){
             if (!wire.canReceivePower(side)) continue;
             if (oldInput != null && oldInput.first() == side) continue;
             IRedstoneDevice device = getDeviceAtSide(side);
-            if (device == null) sidesToUpdate.add(side);
-            if ((tRedstone = getRedstoneAtSide(side, device)) > (power & 0xFF)){
+            tRedstone = getRedstoneAtSide(side,device);
+            if (tRedstone > (power & 0xFF) && tRedstone != (oldPower & 0xFF) - 1){
                 power = (byte) tRedstone;
                 input = Pair.of(side, power & 0xFF);
             }
         }
         if (power != oldPower){
             RedstoneApi.getInstance().setWiresHandleUpdates(false);
-            for (Direction tSide : sidesToUpdate) {
-                updateBlock(tSide);
+            for (var side : sidesToUpdate.entrySet()) {
+                if (side.getValue() && multipart != null){
+                    BlockState partState = multipart.getStateByFacing(side.getKey().getOpposite());
+                    if (partState != null){
+                        partState.neighborChanged(getLevel(), getBlockPos(), partState.getBlock(), getBlockPos(), false);
+                    }
+                } else {
+                    updateBlock(side.getKey());
+                }
             }
             RedstoneApi.getInstance().setWiresHandleUpdates(true);
             return true;
@@ -145,6 +188,17 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
             tDelegator.getCapability(CapabilityRedstoneDevice.UNINSULATED_CAPABILITY, side.getOpposite()).ifPresent(r -> device[0] = r);
         }
         return device[0];
+    }
+
+    public Pair<BlockState, BlockEntity> getBlockEntityAtSide(Direction side){
+        BlockEntity neighborBE = getLevel().getBlockEntity(getBlockPos().relative(side));
+        if (neighborBE instanceof IBPMultipartTile multipartTile){
+            BlockState partState = multipartTile.getStateByFacing(face);
+            if (partState != null){
+                return Pair.of(partState, multipartTile.getTileForState(partState));
+            }
+        }
+        return Pair.of(getLevel().getBlockState(getBlockPos().relative(side)) ,neighborBE);
     }
 
     @Override
