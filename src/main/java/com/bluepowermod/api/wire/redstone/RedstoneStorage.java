@@ -1,6 +1,7 @@
 package com.bluepowermod.api.wire.redstone;
 
 import com.bluepowermod.api.connect.ConnectionType;
+import com.bluepowermod.api.misc.IFace;
 import com.bluepowermod.api.multipart.IBPMultipartTile;
 import com.bluepowermod.api.multipart.IBPPartTile;
 import com.bluepowermod.block.BlockBPMultipart;
@@ -27,7 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
+public class RedstoneStorage implements IRedstoneDevice, IRedConductor, IFace {
     private final RedstoneConnectionCache redstoneConnections = RedstoneApi.getInstance().createRedstoneConnectionCache(this);
     byte power = 0;
     private final IRedwire wire;
@@ -225,5 +226,10 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
     @Override
     public boolean isAnalogue(Direction side) {
         return wire.getRedwireType(side).isAnalogue();
+    }
+
+    @Override
+    public Direction getFace() {
+        return face;
     }
 }
