@@ -84,7 +84,7 @@ public class RedstoneStorage implements IRedstoneDevice, IRedConductor {
             }
         }
         Map<Direction, Boolean> sidesToUpdate = new HashMap<>();
-        if (input != null && input != oldInput){ //original input has changed
+        if (input != oldInput){ //original input has changed
             for (Direction side : Direction.values()){
                 Pair<BlockState, BlockEntity> p = getBlockEntityAtSide(side);
                 boolean isinThisBlock = false;
