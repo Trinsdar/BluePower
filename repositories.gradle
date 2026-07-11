@@ -1,0 +1,28 @@
+// Add any additional repositories for your dependencies here.
+
+repositories {
+    maven { // The repo from which to get waila
+        name "Mobius Repo"
+        url "https://mobiusstrip.eu/maven"
+    }
+    maven { // the repo from which to get NEI and stuff
+        name 'CB Repo'
+        url "https://chickenbones.net/maven/"
+    }
+    maven {
+        name 'OpenComputers'
+        url = "https://maven.cil.li/"
+    }
+    maven {
+        name = "ic2"
+        url = "https://maven.ic2.player.to/"
+    }
+    maven {
+        name "ModMaven"
+        url "https://modmaven.dev"
+    }
+    maven {
+        name = "Qmunity"
+        url = "https://maven.bluepowermod.com/"
+    }
+}
